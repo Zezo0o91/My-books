@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>مكتبة يعسوب الدين</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --accent: #3498db;
+            --glass: rgba(255, 255, 255, 0.1);
+            --text: #2c3e50;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background: linear-gradient(45deg, #f8f9fa, #e9ecef);
+            min-height: 100vh;
+            color: var(--text);
+        }
+
+        .header {
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            padding: 1.5rem;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .main-container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+
+        .control-panel {
+            background: var(--glass);
+            backdrop-filter: blur(15px);
+            border-radius: 15px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .search-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .input-group {
+            position: relative;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 0.8rem;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.9);
+            transition: all 0.3s ease;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 8px rgba(52, 152, 219, 0.3);
+        }
+
+        .btn {
+            background: var(--accent);
+            color: white;
+            padding: 0.8rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+            transform: translateY(-2px);
+        }
+
+        .viewer-container {
+            position: relative;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .toolbar {
+            position: absolute;
+            top: 1rem;
+            left: 1rem;
+            display: flex;
+            gap: 0.5rem;
+            z-index: 100;
+        }
+
+        canvas {
+            width: 100%;
+            height: auto;
+            min-height: 80vh;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .page-info {
+            text-align: center;
+            margin: 1rem 0;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            .main-container {
+                padding: 0 0.5rem;
+            }
+            
+            .btn span {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>📚 مكتبة يعسوب الدين</h1>
+    </header>
+
+    <div class="main-container">
+        <div class="control-panel">
+            <div class="search-grid">
+                <div class="input-group">
+                    <input type="text" 
+                           id="bookSearch" 
+                           placeholder="ابحث عن كتاب...">
+                </div>
+                
+                <div class="input-group">
+                    <input type="number" 
+                           id="hadithNumber" 
+                           placeholder="رقم الحديث">
+                </div>
+                
+                <div class="input-group">
+                    <input type="number" 
+                           id="pageNumber" 
+                           placeholder="رقم الصفحة">
+                </div>
+            </div>
+
+            <div class="toolbar">
+                <button class="btn" onclick="loadBook()">
+                    <span>عرض</span> 🔍
+                </button>
+                <button class="btn" onclick="zoomIn()">
+                    <span>تكبير</span> ➕
+                </button>
+                <button class="btn" onclick="zoomOut()">
+                    <span>تصغير</span> ➖
+                </button>
+                <button class="btn" onclick="toggleFullscreen()">
+                    <span>ملء الشاشة</span> ⛶
+                </button>
+            </div>
+        </div>
+
+        <div class="viewer-container" id="viewer">
+            <div class="toolbar">
+                <button class="btn" onclick="prevPage()">السابق</button>
+                <button class="btn" onclick="nextPage()">التالي</button>
+            </div>
+            <canvas id="pdfCanvas"></canvas>
+            <div class="page-info">
+                <span id="currentPage">1</span> / 
+                <span id="totalPages">-</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let pdfDoc = null;
+        let currentPage = 1;
+        let currentScale = 1.3;
+        let totalPages = 0;
+
+        // تهيئة PDF.js
+        const canvas = document.getElementById('pdfCanvas');
+        const ctx = canvas.getContext('2d');
+
+        async function loadBook() {
+            const bookName = document.getElementById('bookSearch').value;
+            const hadithNumber = document.getElementById('hadithNumber').value;
+            const pageNumber = document.getElementById('pageNumber').value;
+
+            try {
+                // البحث عن الحديث
+                if(hadithNumber) {
+                    currentPage = Math.ceil(hadithNumber / 10); // 10 أحاديث لكل صفحة
+                    document.getElementById('pageNumber').value = currentPage;
+                }
+                
+                // تحميل الكتاب
+                const pdfPath = `books/${bookName}.pdf`;
+                pdfDoc = await pdfjsLib.getDocument(pdfPath).promise;
+                totalPages = pdfDoc.numPages;
+                document.getElementById('totalPages').textContent = totalPages;
+                
+                renderPage();
+            } catch (error) {
+                alert('خطأ في التحميل: ' + error.message);
+            }
+        }
+
+        async function renderPage() {
+            const page = await pdfDoc.getPage(currentPage);
+            const viewport = page.getViewport({ scale: currentScale });
+            
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            
+            await page.render({
+                canvasContext: ctx,
+                viewport: viewport
+            }).promise;
+            
+            document.getElementById('currentPage').textContent = currentPage;
+        }
+
+        // التنقل بين الصفحات
+        function prevPage() {
+            if(currentPage > 1) {
+                currentPage--;
+                document.getElementById('pageNumber').value = currentPage;
+                renderPage();
+            }
+        }
+
+        function nextPage() {
+            if(currentPage < totalPages) {
+                currentPage++;
+                document.getElementById('pageNumber').value = currentPage;
+                renderPage();
+            }
+        }
+
+        // التحكم في التكبير/التصغير
+        function zoomIn() {
+            currentScale += 0.1;
+            renderPage();
+        }
+
+        function zoomOut() {
+            currentScale = Math.max(0.8, currentScale - 0.1);
+            renderPage();
+        }
+
+        // ملء الشاشة
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // البحث التلقائي أثناء الكتابة
+        document.getElementById('bookSearch').addEventListener('input', function(e) {
+            // يمكن إضافة اقتراحات الكتب هنا
+        });
+    </script>
+</body>
+</html>
